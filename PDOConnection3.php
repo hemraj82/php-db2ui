@@ -1,7 +1,6 @@
 <style>
     table.ol-datagrid{
         border: 1px solid #cccccc;
-
     }
 
     table.ol-datagrid td{
@@ -32,11 +31,62 @@
         display: inline-block;
     }
 
+    .pagination-list li{
+        list-style: none;
+        float: left;
+        padding: 7px;
+        margin: 5px;
+    }
 
+    .pagination-list li .active{
+        color : #333;
+    }
 
 </style>
 
 <?php
+
+function createLinks( $links, $_total,$_limit,$_page ) {
+
+    $list_class="pagination-list";
+    $last       = ceil( $_total / $_limit );
+    $start      = ( ( $_page - $links ) > 0 ) ? $_page - $links : 1;
+    $end        = ( ( $_page + $links ) < $last ) ? $_page + $links : $last;
+
+    var_dump($last);
+    var_dump($start);
+    var_dump($end);
+
+    $html       = '<ul class="' . $list_class . '">';
+
+    $class      = ( $_page == 1 ) ? "disabled" : "";
+    $html       .= '<li class="' . $class . '"><a href="?limit=' . $_limit . '&page=' . ( $_page - 1 ) . '">&laquo;</a></li>';
+
+    if ( $start > 1 ) {
+        $html   .= '<li><a href="?limit=' . $_limit . '&page=1">1</a></li>';
+        $html   .= '<li class="disabled"><span>...</span></li>';
+    }
+
+    for ( $i = $start ; $i <= $end; $i++ ) {
+        $class  = ( $_page == $i ) ? "active" : "";
+        $html   .= '<li class="' . $class . '"><a href="?limit=' . $_limit . '&page=' . $i . '">' . $i . '</a></li>';
+    }
+
+    if ( $end < $last ) {
+        $html   .= '<li class="disabled"><span>...</span></li>';
+        $html   .= '<li><a href="?limit=' . $_limit . '&page=' . $last . '">' . $last . '</a></li>';
+    }
+
+    $class      = ( $_page == $last ) ? "disabled" : "";
+    $html       .= '<li class="' . $class . '"><a href="?limit=' . $_limit . '&page=' . ( $_page + 1 ) . '">&raquo;</a></li>';
+
+    $html       .= '</ul>';
+
+
+    return $html;
+}
+
+
 $mysqli = new mysqli("localhost", "root", "", "rigsphere");
 if ($mysqli->connect_errno) {
     echo "Failed to connect to MySQL: (" . $mysqli->connect_errno . ") " . $mysqli->connect_error;
@@ -46,15 +96,19 @@ $whereSql=null;
 $currentQueryString=null;
 /* Generate where condition */
 foreach($_REQUEST as  $key=>$val){
-   if(!empty($_REQUEST[$key]) && !($_REQUEST[$key]=="order-by" || $_REQUEST[$key]=="order-type")){
+    var_dump($key);
+   if(!empty($key) && !($key=="order-by" || $key=="order-type" || $key=="limit" || $key=="page") && !empty($val)){
        $val2=str_replace("&", "%26", $val);
        $currentQueryString=$currentQueryString.'&'.$key.'='.$val2;
+
        $s=explode('+',$key);
-       var_dump($s);
-       if($s[2]=="STR") {
+       //var_dump($s);
+       if(isset($s[2])&& $s[2]=="STR") {
            $whereSql = $whereSql . ''.$s[0].'.'.$s[1].'=\''.$val.'\' or ';
-       }else{
+       }else if(isset($s[1])){
            $whereSql = $whereSql . ''.$s[0].'.'.$s[1].'='.$val.' or ';
+       }else{
+           $whereSql = $whereSql . ''.$s[0].'='.$val.' or ';
        }
    }
 }
@@ -65,20 +119,39 @@ if($whereSql){
 $whereSql=rtrim($whereSql, " or ");
 var_dump($whereSql);
 $currentQueryString=ltrim($currentQueryString, "&");
-var_dump($currentQueryString);
+
 // ORDER BY ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 $order_sql=null;
 $orderBy=null;
+$orderType="ASC";
 if(isset($_REQUEST['order-by'])){
     $orderBy=$_REQUEST['order-by'];
     if(isset($_REQUEST['order-type'])){
         $orderType=$_REQUEST['order-type'];
         $order_sql="order by ".$orderBy.' '.$orderType;
+        //$currentQueryString=$currentQueryString.'&order-by='.$orderBy.'&order-type='.$orderType;
     }
 }
-// limit /////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
+
+// LIMIT /////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+/*Pagination ------------------------------------- */
+$limit=10;
+$page=0;
+$limit_sql="";
+if(isset($_REQUEST['page']) && isset($_REQUEST['limit'])){
+    $page=$_REQUEST['page'];
+    $limit=$_REQUEST['limit'];
+    if($limit<=0) $limit=10;
+    if($page<0) $page=0;
+    $limit_sql="LIMIT ".($limit*$page).' '.$limit;
+    $currentQueryString=$currentQueryString.'&page='.$page.'&limit='.$limit;
+}
+/*Pagination --------------------------------------*/
+
+var_dump($currentQueryString);
 
 $stmt = $mysqli->prepare(" 	Select users.username as 'User Name', users.email as Email, job_seekers.contact_number as 'Contact No.', users.first_name, users.last_name, job_seekers.location, users.id From users Inner Join job_seekers On users.id = job_seekers.id Where users.id > 600");
 $stmt->execute();
@@ -105,9 +178,9 @@ foreach ($cols as $c) {
     }
 }
 
-/* Started creating dynamic search form*////////////////////////////////////////////////////////////////////////////
+/* Started creating dynamic search form *///////////////////////////////////////
 var_dump($_REQUEST);
-echo '<form class="search" action="PDOConnection3.php">';
+echo '<form class="search" action="">';
 $input_fields=array();
 foreach ($cols as $c) {
 
@@ -143,22 +216,22 @@ echo "</form>";
 $html_table_header_row="<tr>";
 $count=0;
 foreach($cols_name as $cn){
+    var_dump($html_name_with_table_name[$count]);
+    var_dump($currentQueryString);
+    $queryString=explode("&page=",$currentQueryString)[0];
 
     if($orderBy==$html_name_with_table_name[$count]) {
-        if($orderType="asc") {
-            $html_table_header_row = $html_table_header_row . '<th class="asc"><a href="?'.$currentQueryString.'&order-by='.$html_name_with_table_name[$count].'&order-type=DESC">' . $cols_alias[$count] . '</a></th>';
+        if($orderType=="ASC") {
+            $html_table_header_row = $html_table_header_row . '<th class="asc"><a href="?'.$queryString.'&order-by='.$html_name_with_table_name[$count].'&order-type=DESC">' . $cols_alias[$count] . '</a></th>';
         }else{
-            $html_table_header_row = $html_table_header_row . '<th class="desc"><a href="?'.$currentQueryString.'&order-by='.$html_name_with_table_name[$count].'&order-type=ASC">' . $cols_alias[$count] . '</a></th>';
+            $html_table_header_row = $html_table_header_row . '<th class="desc"><a href="?'.$queryString.'&order-by='.$html_name_with_table_name[$count].'&order-type=ASC">' . $cols_alias[$count] . '</a></th>';
         }
     }else {
-        $html_table_header_row = $html_table_header_row . '<th class=""><a href="?' . $currentQueryString . '&order-by=' . $html_name_with_table_name[$count] . '&order-type=ASC">' . $cols_alias[$count] . '</a></th>';
+        $html_table_header_row = $html_table_header_row . '<th class=""><a href="?' .$queryString. '&order-by=' . $html_name_with_table_name[$count] . '&order-type=ASC">' . $cols_alias[$count] . '</a></th>';
     }
         $count++;
 }
 $html_table_header_row=$html_table_header_row.'</tr>';
-
-
-
 
 echo '<table class="ol-datagrid">';
 echo $html_table_header_row;
@@ -177,4 +250,11 @@ foreach($rows as $r) {
 
 echo "</table>";
 /*Ended creating table*/
+/*start pagination*/
+
+//echo createLinks($links, $list_class,$_total,$_limit,$_page );
+
+echo createLinks(5,400,10,20 );
+/*End pagination*/
+
 ?>
