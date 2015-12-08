@@ -46,21 +46,23 @@
 
 <?php
 
-function createLinks( $links, $_total,$_limit,$_page ) {
+function createLinks( $links, $_total,$_limit,$_page,$currentQueryString ) {
+
+    if($_total<=$_limit)
+    {
+        return "";
+    }
 
     $list_class="pagination-list";
     $last       = ceil( $_total / $_limit );
     $start      = ( ( $_page - $links ) > 0 ) ? $_page - $links : 1;
     $end        = ( ( $_page + $links ) < $last ) ? $_page + $links : $last;
 
-    var_dump($last);
-    var_dump($start);
-    var_dump($end);
 
     $html       = '<ul class="' . $list_class . '">';
 
     $class      = ( $_page == 1 ) ? "disabled" : "";
-    $html       .= '<li class="' . $class . '"><a href="?limit=' . $_limit . '&page=' . ( $_page - 1 ) . '">&laquo;</a></li>';
+    $html       .= '<li class="' . $class . '"><a href="?'.$currentQueryString.'&limit=' . $_limit . '&page=' . ( $_page - 1 ) . '">&laquo;</a></li>';
 
     if ( $start > 1 ) {
         $html   .= '<li><a href="?limit=' . $_limit . '&page=1">1</a></li>';
@@ -69,7 +71,7 @@ function createLinks( $links, $_total,$_limit,$_page ) {
 
     for ( $i = $start ; $i <= $end; $i++ ) {
         $class  = ( $_page == $i ) ? "active" : "";
-        $html   .= '<li class="' . $class . '"><a href="?limit=' . $_limit . '&page=' . $i . '">' . $i . '</a></li>';
+        $html   .= '<li class="' . $class . '"><a href="?'.$currentQueryString.'&limit=' . $_limit . '&page=' . $i . '">' . $i . '</a></li>';
     }
 
     if ( $end < $last ) {
@@ -78,7 +80,7 @@ function createLinks( $links, $_total,$_limit,$_page ) {
     }
 
     $class      = ( $_page == $last ) ? "disabled" : "";
-    $html       .= '<li class="' . $class . '"><a href="?limit=' . $_limit . '&page=' . ( $_page + 1 ) . '">&raquo;</a></li>';
+    $html       .= '<li class="' . $class . '"><a href="?'.$currentQueryString.'&limit=' . $_limit . '&page=' . ( $_page + 1 ) . '">&raquo;</a></li>';
 
     $html       .= '</ul>';
 
@@ -93,43 +95,44 @@ if ($mysqli->connect_errno) {
 }
 
 $whereSql=null;
+$and_or='and';
 $currentQueryString=null;
 /* Generate where condition */
 foreach($_REQUEST as  $key=>$val){
-    var_dump($key);
+
    if(!empty($key) && !($key=="order-by" || $key=="order-type" || $key=="limit" || $key=="page") && !empty($val)){
-       $val2=str_replace("&", "%26", $val);
-       $currentQueryString=$currentQueryString.'&'.$key.'='.$val2;
 
        $s=explode('+',$key);
-       //var_dump($s);
-       if(isset($s[2])&& $s[2]=="STR") {
-           $whereSql = $whereSql . ''.$s[0].'.'.$s[1].'=\''.$val.'\' or ';
-       }else if(isset($s[1])){
-           $whereSql = $whereSql . ''.$s[0].'.'.$s[1].'='.$val.' or ';
+
+       if ($s[sizeof($s)-1]=="STR"){
+           $whereSql = $whereSql . ''.$s[0].'.'.$s[1].'=\''.$val.'\' '.$and_or.' ';
        }else{
-           $whereSql = $whereSql . ''.$s[0].'='.$val.' or ';
+           $whereSql = $whereSql . ''.$s[0].'.'.$s[1].'='.$val.' '.$and_or.' ';
        }
+       $val2=urlencode($val);
+       $key=urlencode($key);
+       $currentQueryString=$currentQueryString.'&'.$key.'='.$val2;
    }
 }
 if($whereSql){
     $whereSql='where '.$whereSql;
 }
 
-$whereSql=rtrim($whereSql, " or ");
-var_dump($whereSql);
+$whereSql=rtrim($whereSql, " ".$and_or." ");
 $currentQueryString=ltrim($currentQueryString, "&");
 
 // ORDER BY ///////////////////////////////////////////////////////////////////////////////////////////////////////////
-$order_sql=null;
+$order_sql="";
 $orderBy=null;
 $orderType="ASC";
 if(isset($_REQUEST['order-by'])){
     $orderBy=$_REQUEST['order-by'];
+    $orderBy = str_replace(" ", "+", $orderBy);
+    //echo "<hr/>Order by values = ".$orderBy;
     if(isset($_REQUEST['order-type'])){
         $orderType=$_REQUEST['order-type'];
-        $order_sql="order by ".$orderBy.' '.$orderType;
-        //$currentQueryString=$currentQueryString.'&order-by='.$orderBy.'&order-type='.$orderType;
+        $order_sql="order by ".str_replace("+", ".", $orderBy).' '.$orderType;
+        $currentQueryString=$currentQueryString.'&order-by='.$orderBy.'&order-type='.$orderType;
     }
 }
 
@@ -141,28 +144,44 @@ if(isset($_REQUEST['order-by'])){
 $limit=10;
 $page=0;
 $limit_sql="";
-if(isset($_REQUEST['page']) && isset($_REQUEST['limit'])){
-    $page=$_REQUEST['page'];
-    $limit=$_REQUEST['limit'];
-    if($limit<=0) $limit=10;
-    if($page<0) $page=0;
-    $limit_sql="LIMIT ".($limit*$page).' '.$limit;
-    $currentQueryString=$currentQueryString.'&page='.$page.'&limit='.$limit;
-}
+$page=isset($_REQUEST['page'])?$_REQUEST['page']:0;
+$limit=isset($_REQUEST['limit'])?$_REQUEST['limit']:10;
+$page=$page-1;
+if($limit<=0) $limit=10;
+if($page<0) $page=0;
+$limit_sql="LIMIT ".($limit*$page).','.$limit;
+//$currentQueryString=$currentQueryString.'&page='.$page.'&limit='.$limit;
 /*Pagination --------------------------------------*/
 
-var_dump($currentQueryString);
+/*This is the original sql command to be passed as parameters*/
+$sqlQuery="Select users.username as 'User Name', users.email as Email, job_seekers.contact_number as 'Contact No.', users.first_name, users.last_name, job_seekers.location, users.id From users Inner Join job_seekers On users.id = job_seekers.id";
+/* Now modify the actual sql with search parameters*/
+if (strpos(strtolower($sqlQuery),'where') == true && !empty($whereSql)){
+    $sqlQuery=$sqlQuery.' '.$and_or.''.ltrim($whereSql,"where").' '.$order_sql;;
+}else{
+    $sqlQuery=$sqlQuery.' '.$whereSql.' '.$order_sql;
+}
 
-$stmt = $mysqli->prepare(" 	Select users.username as 'User Name', users.email as Email, job_seekers.contact_number as 'Contact No.', users.first_name, users.last_name, job_seekers.location, users.id From users Inner Join job_seekers On users.id = job_seekers.id Where users.id > 600");
+
+// Retrieve total records against this query
+$sqlTotalRecords='select count(*) from '.explode("from",strtolower($sqlQuery))[1];
+
+$stmt = $mysqli->prepare($sqlTotalRecords);
+$stmt->execute();
+$res1 = $stmt->get_result();
+$totalRecordsFound=$res1->fetch_all()[0][0];
+
+// Add limit for pagnation
+$sqlQuery=$sqlQuery.' '.$limit_sql;
+echo $sqlQuery;
+// Execute actual query for fetching the records.
+$stmt = $mysqli->prepare($sqlQuery);
 $stmt->execute();
 $res = $stmt->get_result();
 $totalRows=$res->num_rows;//Retrieve number of rows
 $rows = $res->fetch_all();//total records
 
-
-
 $cols = ($res->fetch_fields());
-
 $cols_name = array();
 $cols_name_with_table_name=array();
 $html_name_with_table_name=array();
@@ -179,8 +198,8 @@ foreach ($cols as $c) {
 }
 
 /* Started creating dynamic search form *///////////////////////////////////////
-var_dump($_REQUEST);
 echo '<form class="search" action="">';
+
 $input_fields=array();
 foreach ($cols as $c) {
 
@@ -216,10 +235,7 @@ echo "</form>";
 $html_table_header_row="<tr>";
 $count=0;
 foreach($cols_name as $cn){
-    var_dump($html_name_with_table_name[$count]);
-    var_dump($currentQueryString);
-    $queryString=explode("&page=",$currentQueryString)[0];
-
+     $queryString=explode("&page=",$currentQueryString)[0];
     if($orderBy==$html_name_with_table_name[$count]) {
         if($orderType=="ASC") {
             $html_table_header_row = $html_table_header_row . '<th class="asc"><a href="?'.$queryString.'&order-by='.$html_name_with_table_name[$count].'&order-type=DESC">' . $cols_alias[$count] . '</a></th>';
@@ -254,7 +270,7 @@ echo "</table>";
 
 //echo createLinks($links, $list_class,$_total,$_limit,$_page );
 
-echo createLinks(5,400,10,20 );
+echo createLinks(5,$totalRecordsFound,$limit,$page,$currentQueryString);
 /*End pagination*/
 
 ?>
