@@ -94,7 +94,7 @@ function generate_data_table($sqlQuery)
 
    // $sqlQuery = "Select users.username as 'User Name', users.email as Email, job_seekers.contact_number as 'Contact No.', users.first_name, users.last_name, job_seekers.location, users.id From users Inner Join job_seekers On users.id = job_seekers.id";
 
-    $mysqli = new mysqli("localhost", "root", "", "rigsphere");
+    $mysqli = new mysqli("localhost", "root", "", "demo");
     if ($mysqli->connect_errno) {
         echo "Failed to connect to MySQL: (" . $mysqli->connect_errno . ") " . $mysqli->connect_error;
     }
